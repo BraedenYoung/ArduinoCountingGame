@@ -11,8 +11,6 @@
 #define COLOR_ORDER GRB
 #define CHIPSET     WS2811
 
-#define BRIGHTNESS 64
-
 
 SdReader card;    // This object holds the information for the card
 FatVolume vol;    // This holds the information for the partition on the card
@@ -60,8 +58,13 @@ byte resources[RESOURCE_COUNT][2] = {{4,2}, {3,1}};
 
 // LED config 
 #define NUM_LEDS 50
+#define BRIGHTNESS 96
+
 CRGB leds_plus_safety_pixel[ NUM_LEDS + 1];
 CRGB* const leds( leds_plus_safety_pixel + 1);
+
+uint8_t gHue = 0; // rotating "base color" used by many of the patterns
+#define FRAMES_PER_SECOND  120
 
 // All numbers need to be padded to 13 to accomidate '8'
 const byte numbers[][13][2] PROGMEM = {
@@ -244,8 +247,7 @@ void checkJoystick()
 // ======================  //
 
 void checkResourceCollected()
-{
-  
+{  
     for (int i = 0; i < RESOURCE_COUNT; i++){
       if (!(resources[i][0] == player[0] && resources[i][1] == player[1])) {
         continue;
@@ -261,9 +263,12 @@ void checkResourceCollected()
       
       createNewResource(i);
       
-      
-      // Reset the game 
-      if (resources_collected > 9) {
+      // Max score reached. Reset the game after showing the 'success' screen
+      if (resources_collected > 1) {
+        drawSuccessScreen();
+        FastLED.show();
+        delay(300);
+        resources_collected = 0;
       }
 
       // Expects player/resources to be redrawn after call
@@ -271,10 +276,46 @@ void checkResourceCollected()
     }
 }
 
+
+/*
+ * Create a single resource, verifying that it was created in a valid location
+ */
 void createNewResource(byte resource_index)  
 {
-  resources[resource_index][0] = 1;
-  resources[resource_index][1] = 1;
+  do 
+  {
+    resources[resource_index][0] = random(0, MATRIX_WIDTH);
+    resources[resource_index][1] = random(0, MATRIX_HEIGHT);
+  } while (checkInvalidResourceLocation(resource_index));
+  
+}
+
+bool checkInvalidResourceLocation(byte resource_index) 
+{
+   // Check existing resource conflict
+   for (int i = 0; i < RESOURCE_COUNT; i++){
+      if (i == resource_index) 
+      {
+        continue;
+      }
+      
+      if (resources[i][0] == resources[resource_index][0] && resources[i][1] == resources[resource_index][1]) 
+      {
+        return true;
+      }
+   } 
+
+   // Check player conflict
+   if (player[0] == resources[resource_index][0] && player[1] == resources[resource_index][1]) 
+   {
+      return true;
+   }
+
+   return false;
+}
+
+void drawSuccessScreen() {
+    fill_rainbow(leds, NUM_LEDS, gHue, 7);
 }
 
 // ======================  //
@@ -283,10 +324,7 @@ void createNewResource(byte resource_index)
 
 void loop()
 {
-
-    //drawPlayer();
-    //drawResources();
-
+  
     clearDisplay();
     
 //    for (int i = 0; i < 9; i++ ) {
@@ -312,6 +350,8 @@ void loop()
     FastLED.show();
 
     delay(200);
+
+    EVERY_N_MILLISECONDS( 20 ) { gHue++; } // slowly cycle the "base color" through the rainbow
 }
 
 
