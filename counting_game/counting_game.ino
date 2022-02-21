@@ -47,12 +47,14 @@ const char *const files[] PROGMEM = {
 };
 
 // Params for width and height
-const uint8_t kMatrixWidth = 10;
-const uint8_t kMatrixHeight = 5;
+#define LED_WIDTH_DENSITY 2
+
+#define MATRIX_WIDTH 5
+#define MATRIX_HEIGHT 5
 
 // Game variables
 byte player[2] = {2,2};
-
+byte resources_collected = 0;
 #define RESOURCE_COUNT 2
 byte resources[RESOURCE_COUNT][2] = {{4,2}, {3,1}};
 
@@ -73,6 +75,10 @@ const byte numbers[][13][2] PROGMEM = {
   {{1, 0}, {2, 0}, {3, 0}, {1, 1}, {3, 1}, {1, 2}, {2, 2}, {3, 2}, {1, 3}, {3, 3}, {1, 4}, {2, 4}, {3, 4}}, //8
   {{1, 0}, {2, 0}, {3, 0}, {3, 1}, {1, 2}, {2, 2}, {3, 2}, {1, 3}, {3, 3}, {1, 4}, {2, 4}, {3, 4}, {3, 4}}, //9
 };
+
+// Input config 
+#define DEBOUNCE 100  // input debouncer
+
 
 /*
  * Define macro to put error messages in flash memory
@@ -150,15 +156,14 @@ uint16_t XY(uint8_t x, uint8_t y)
   uint16_t i;
   if( y & 0x01) {
     // Odd rows run backwards
-    uint8_t reverseX = (kMatrixWidth - 1) - x;
-    i = (y * kMatrixWidth) + reverseX;
+    uint8_t reverseX = ((MATRIX_WIDTH * LED_WIDTH_DENSITY) - 1) - x;
+    i = (y * (MATRIX_WIDTH * LED_WIDTH_DENSITY)) + reverseX;
   } else {
     // Even rows run forwards
-    i = (y * kMatrixWidth) + x;
+    i = (y * (MATRIX_WIDTH * LED_WIDTH_DENSITY)) + x;
   }
   return i;
 }
-
 
 void setLedCellColor(uint8_t x, uint8_t y, CRGB colour)
 {
@@ -168,7 +173,6 @@ void setLedCellColor(uint8_t x, uint8_t y, CRGB colour)
   leds[ XY(2 * x, y)]  = colour;
 }
  
-
 /*
  * Set the LED state for the player
  */
@@ -176,7 +180,6 @@ void drawPlayer()
 {
   setLedCellColor(player[0], player[1], CRGB::Green);
 }
-
 
 /*
  * Set the LED state for all resources 
@@ -209,6 +212,70 @@ void clearDisplay() {
  }
 }
 
+// ======================  //
+//     INPUT HELPERS       //
+// ======================  //
+
+void checkJoystick()
+{
+  int joyUp = digitalRead(A0);
+  int joyDown = digitalRead(A1);
+  int joyLeft = digitalRead(A2);
+  int joyRight = digitalRead(A3);
+  
+  if (joyLeft == LOW) {
+    player[0] = player[0] == 0 ? MATRIX_WIDTH - 1 :(player[0] - 1) % MATRIX_WIDTH;
+  } else if (joyRight == LOW) {
+    player[0] =  (player[0] + 1) % MATRIX_WIDTH;
+  }
+
+  if (joyUp == LOW) {
+    player[1] =  (player[1] + 1) % MATRIX_HEIGHT;
+    Serial.println(player[1]);
+  } else if (joyDown == LOW) {
+     player[1] = player[1] == 0 ? MATRIX_HEIGHT - 1 :(player[1] - 1) % MATRIX_HEIGHT;
+    Serial.println(player[1]);
+  }
+}
+
+
+// ======================  //
+//      GAME LOGIC         //
+// ======================  //
+
+void checkResourceCollected()
+{
+  
+    for (int i = 0; i < RESOURCE_COUNT; i++){
+      if (!(resources[i][0] == player[0] && resources[i][1] == player[1])) {
+        continue;
+      }
+
+      // Player collected a resource 
+      resources_collected = resources_collected + 1;
+
+      clearDisplay();
+      displayNumber(resources_collected -1);
+      FastLED.show();
+      playFileByIndex(resources_collected - 1);
+      
+      createNewResource(i);
+      
+      
+      // Reset the game 
+      if (resources_collected > 9) {
+      }
+
+      // Expects player/resources to be redrawn after call
+      clearDisplay();
+    }
+}
+
+void createNewResource(byte resource_index)  
+{
+  resources[resource_index][0] = 1;
+  resources[resource_index][1] = 1;
+}
 
 // ======================  //
 //       MAIN LOOP         //
@@ -222,17 +289,29 @@ void loop()
 
     clearDisplay();
     
-    for (int i = 0; i < 9; i++ ) {
-     
-     displayNumber(i);
-     FastLED.show();
+//    for (int i = 0; i < 9; i++ ) {
+//
+//      checkJoystick();
+//     
+//     displayNumber(i);
+//     FastLED.show();
+//
+//     playFileByIndex(i);
+//         
+//     delay(500);
+//     
+//     clearDisplay();
+//    }
 
-     playFileByIndex(i);
-         
-     delay(500);
-     
-     clearDisplay();
-    }
+    checkJoystick();
+    checkResourceCollected();
+    
+    drawResources();
+    drawPlayer();
+        
+    FastLED.show();
+
+    delay(200);
 }
 
 
@@ -322,4 +401,10 @@ void setup() {
   // Add the leds and set the brightness
   FastLED.addLeds<CHIPSET, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalSMD5050);
   FastLED.setBrightness( BRIGHTNESS );  
+
+  // Set the input pins for the joystick
+  pinMode(A0, INPUT_PULLUP);
+  pinMode(A1, INPUT_PULLUP);
+  pinMode(A2, INPUT_PULLUP);
+  pinMode(A3, INPUT_PULLUP);
 }
